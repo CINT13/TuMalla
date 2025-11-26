@@ -1,153 +1,324 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <title>TuMalla – Registro Universitario</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>TuMalla — Malla Curricular Interactiva</title>
+  <style>
+    :root{
+      --bg:#f7f6fb;
+      --card:#ffffff;
+      --muted:#6b6b7a;
+      --accent:#a3d8d3;
+      --accent-2:#ffd6e0;
+      --accent-3:#ffe8a1;
+      --glass: rgba(255,255,255,0.6);
+      --radius:12px;
+      --pass-threshold:60; /* cambiar si desea otro umbral */
+      font-family: Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,var(--bg),#fff);padding:24px;color:#333}
+    .app{max-width:1200px;margin:0 auto}
+    header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}
+    h1{margin:0;font-size:20px}
+    .controls{display:flex;gap:8px;align-items:center}
+    select,input[type=number]{padding:8px;border-radius:10px;border:1px solid #e6e6ef;background:var(--card)}
+    button{padding:8px 12px;border-radius:10px;border:0;background:var(--accent);cursor:pointer}
+    .toolbar{display:flex;gap:8px;align-items:center}
 
-  <!-- Tailwind CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
+    .board{display:flex;gap:12px;align-items:flex-start;overflow:auto;padding-bottom:20px}
+    .column{min-width:220px;background:var(--card);border-radius:var(--radius);padding:12px;box-shadow:0 6px 18px rgba(45,45,70,0.06)}
+    .col-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+    .subject{background:linear-gradient(180deg, #fff, var(--glass));padding:10px;border-radius:10px;margin-bottom:8px;border:1px solid #f0f0f6;position:relative}
+    .subject.locked{opacity:0.5}
+    .subject .name{font-weight:600}
+    .subject .meta{font-size:12px;color:var(--muted);margin-top:6px;display:flex;justify-content:space-between}
+    .subject .actions{position:absolute;right:8px;top:8px;display:flex;gap:6px}
+    .chip{padding:4px 6px;border-radius:8px;font-size:12px}
+    .tooltip{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(100% + 8px);background:#222;color:#fff;padding:6px 8px;border-radius:6px;font-size:12px;white-space:nowrap;display:none}
+    .subject:hover .tooltip{display:block}
 
-  <!-- Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-auth.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-firestore.js"></script>
+    .muted{color:var(--muted)}
+
+    .summary{display:flex;gap:12px;align-items:center;margin-top:10px}
+    .summary .card{background:var(--card);padding:10px;border-radius:10px;box-shadow:0 6px 18px rgba(45,45,70,0.04)}
+
+    /* modal */
+    .modal-back{position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;padding:16px}
+    .modal{background:var(--card);padding:18px;border-radius:12px;max-width:680px;width:100%}
+    .form-row{display:flex;gap:8px;margin-bottom:8px}
+    label{font-size:13px;color:var(--muted)}
+    input,select,textarea{width:100%;padding:8px;border-radius:8px;border:1px solid #ececf5}
+
+    .small{font-size:13px}
+
+    /* calendar/simple week planner */
+    .calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+    .week-day{background:var(--card);padding:8px;border-radius:8px;min-height:80px}
+
+    footer{margin-top:20px;color:var(--muted);font-size:13px}
+
+    @media (max-width:900px){.board{flex-wrap:nowrap;overflow-x:auto}.column{min-width:260px}}
+  </style>
 </head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1>TuMalla — Malla curricular interactiva</h1>
+        <div class="muted">Columnas por ciclo / años, materias con prerequisitos, guardado local y export.</div>
+      </div>
 
-<body class="bg-gray-100">
+      <div class="controls">
+        <label class="small">Años:</label>
+        <select id="yearsSelect"></select>
+        <div class="toolbar">
+          <button id="btnAdd">+ Añadir materia</button>
+          <button id="btnExportCSV">Exportar · Excel (CSV)</button>
+          <button id="btnPrint">Exportar · PDF</button>
+          <button id="btnReset">Reset</button>
+        </div>
+      </div>
+    </header>
 
-  <!-- ===================== LOGIN ===================== -->
-  <div id="loginPage" class="h-screen flex items-center justify-center">
-    <div class="bg-white w-96 p-8 rounded-2xl shadow-xl">
-      <h1 class="text-3xl font-bold text-center text-blue-700">TuMalla</h1>
-      <p class="text-center text-sm text-gray-600 mb-6">
-        Organiza tus semestres, materias y notas
-      </p>
+    <div class="summary">
+      <div class="card">Materias: <strong id="countSubjects">0</strong></div>
+      <div class="card">Aprobadas: <strong id="countPassed">0</strong></div>
+      <div class="card">Promedio global: <strong id="globalAverage">-</strong></div>
+      <div style="margin-left:auto">Vista: <select id="viewMode"><option value="grid">Malla</option><option value="week">Vista semanal</option></select></div>
+    </div>
 
-      <input id="loginEmail" type="email" placeholder="Correo"
-        class="border p-3 rounded-xl w-full mb-3" />
+    <main id="mainArea">
+      <div id="board" class="board"></div>
 
-      <input id="loginPassword" type="password" placeholder="Contraseña"
-        class="border p-3 rounded-xl w-full mb-3" />
+      <div id="calendarArea" style="display:none;margin-top:12px">
+        <h3>Vista semanal — asigna materias a una semana</h3>
+        <div style="margin-bottom:8px">
+          <label class="small">Semana (1-16):</label>
+          <input id="weekNumber" type="number" value="1" min="1" max="52" style="width:80px" />
+          <button id="assignWeek">Asignar materia seleccionada a la semana</button>
+        </div>
+        <div id="weekGrid" class="calendar"></div>
+      </div>
+    </main>
 
-      <button onclick="login()" class="bg-blue-600 text-white p-3 w-full rounded-xl">
-        Iniciar sesión
-      </button>
+    <footer>Diseño sencillo, colores pastel. Probar en escritorio preferiblemente. Progreso guardado automáticamente en localStorage.</footer>
+  </div>
 
-      <p class="text-sm text-center mt-4">
-        ¿No tienes cuenta? <a class="text-blue-700 cursor-pointer font-semibold" onclick="showRegister()">Registrarse</a>
-      </p>
+  <!-- Modal add/edit -->
+  <div id="modal" style="display:none" class="modal-back">
+    <div class="modal">
+      <h3 id="modalTitle">Nueva materia</h3>
+      <div>
+        <div class="form-row">
+          <div style="flex:2"><label>Nombre</label><input id="mName" /></div>
+          <div style="flex:1"><label>Código</label><input id="mCode" /></div>
+        </div>
+        <div class="form-row">
+          <div style="flex:1"><label>Créditos</label><input id="mCredits" type="number" min="0" value="3" /></div>
+          <div style="flex:1"><label>Ciclo (1..N)</label><input id="mCycle" type="number" min="1" value="1" /></div>
+          <div style="flex:1"><label>Nota (0-100)</label><input id="mGrade" type="number" min="0" max="100" value="0" /></div>
+        </div>
+        <div style="margin-bottom:8px"><label>Prerrequisitos (selecciona varias)</label><select id="mPrereqs" multiple style="height:90px"></select></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end"><button id="saveMat">Guardar</button><button id="cancelMat">Cancelar</button></div>
+      </div>
     </div>
   </div>
 
-  <!-- ===================== REGISTRO ===================== -->
-  <div id="registerPage" class="hidden h-screen flex items-center justify-center">
-    <div class="bg-white w-96 p-8 rounded-2xl shadow-xl">
-      <h1 class="text-3xl font-bold text-center text-purple-700">Crear Cuenta</h1>
-
-      <input id="regEmail" type="email" placeholder="Correo"
-        class="border p-3 rounded-xl w-full mb-3" />
-
-      <input id="regPassword" type="password" placeholder="Contraseña"
-        class="border p-3 rounded-xl w-full mb-3" />
-
-      <button onclick="registerUser()" class="bg-purple-600 text-white p-3 w-full rounded-xl">
-        Registrarse
-      </button>
-
-      <p class="text-sm text-center mt-4">
-        ¿Ya tienes cuenta? <a onclick="showLogin()" class="text-purple-700 cursor-pointer font-semibold">Iniciar sesión</a>
-      </p>
-    </div>
-  </div>
-
-  <!-- ===================== DASHBOARD ===================== -->
-  <div id="dashboard" class="hidden p-6">
-    <h1 class="text-3xl font-bold text-blue-700 mb-4">Tu Malla Curricular</h1>
-
-    <button onclick="addMateria()" class="bg-blue-600 text-white px-4 py-2 rounded-xl mb-4">
-      + Agregar materia
-    </button>
-
-    <div id="listaMaterias" class="grid grid-cols-1 gap-4"></div>
-  </div>
-
-  <!-- ===================== FIREBASE + LÓGICA ===================== -->
   <script>
-    // CONFIGURA AQUÍ TU FIREBASE -----------------------------
-    const firebaseConfig = {
-      apiKey: "TU_API_KEY",
-      authDomain: "TU_AUTH_DOMAIN",
-      projectId: "TU_PROJECT_ID",
-      storageBucket: "TU_BUCKET",
-      messagingSenderId: "TU_SENDER",
-      appId: "TU_APP_ID"
-    };
-    //----------------------------------------------------------
+    /* TuMalla - single-file JS
+       Funciones principales: crear/editar materias, marcar aprobadas, bloqueo por prereqs, guardar en localStorage, exportar CSV y vista semanal.
+    */
 
-    const app = firebase.initializeApp(firebaseConfig);
-    const auth = firebase.getAuth();
-    const db = firebase.getFirestore();
+    const STORAGE_KEY = 'tuMalla_v1';
+    const passThreshold = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--pass-threshold')) || 60;
 
-    // -------- CAMBIO DE PÁGINAS --------
-    function showLogin() {
-      document.getElementById("loginPage").classList.remove("hidden");
-      document.getElementById("registerPage").classList.add("hidden");
-      document.getElementById("dashboard").classList.add("hidden");
+    // estado
+    let state = { years:4, subjects:[], selectedSubjectId:null, weekAssignments:{} };
+
+    // elementos
+    const yearsSelect = document.getElementById('yearsSelect');
+    const board = document.getElementById('board');
+    const btnAdd = document.getElementById('btnAdd');
+    const btnExportCSV = document.getElementById('btnExportCSV');
+    const btnPrint = document.getElementById('btnPrint');
+    const btnReset = document.getElementById('btnReset');
+    const countSubjects = document.getElementById('countSubjects');
+    const countPassed = document.getElementById('countPassed');
+    const globalAverage = document.getElementById('globalAverage');
+    const viewMode = document.getElementById('viewMode');
+    const modal = document.getElementById('modal');
+    const modalTitle = document.getElementById('modalTitle');
+    const mName = document.getElementById('mName');
+    const mCode = document.getElementById('mCode');
+    const mCredits = document.getElementById('mCredits');
+    const mCycle = document.getElementById('mCycle');
+    const mGrade = document.getElementById('mGrade');
+    const mPrereqs = document.getElementById('mPrereqs');
+    const saveMat = document.getElementById('saveMat');
+    const cancelMat = document.getElementById('cancelMat');
+    const btnAssignWeek = document.getElementById('assignWeek');
+    const weekNumber = document.getElementById('weekNumber');
+    const weekGrid = document.getElementById('weekGrid');
+
+    function init(){
+      // poblar años
+      for(let i=3;i<=10;i++){ const o=document.createElement('option'); o.value=i; o.textContent=i; yearsSelect.appendChild(o)}
+      // cargar estado
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if(saved){ try{ state = JSON.parse(saved) }catch(e){ console.warn('no pude parsear localStorage') }}
+      // default years
+      if(!state.years) state.years = 4;
+      yearsSelect.value = state.years;
+      renderBoard();
+
+      // handlers
+      yearsSelect.addEventListener('change',()=>{ state.years=parseInt(yearsSelect.value); save(); renderBoard(); });
+      btnAdd.addEventListener('click',()=>openModal());
+      btnExportCSV.addEventListener('click',exportCSV);
+      btnPrint.addEventListener('click',()=>{ window.print(); });
+      btnReset.addEventListener('click',resetAll);
+      viewMode.addEventListener('change',()=>{ toggleView(viewMode.value) });
+      cancelMat.addEventListener('click',closeModal);
+      saveMat.addEventListener('click',saveModal);
+      btnAssignWeek.addEventListener('click',assignSelectedToWeek);
+
+      renderWeekGrid();
+      updateSummary();
     }
 
-    function showRegister() {
-      document.getElementById("loginPage").classList.add("hidden");
-      document.getElementById("registerPage").classList.remove("hidden");
-      document.getElementById("dashboard").classList.add("hidden");
+    function toggleView(v){
+      if(v==='grid'){ document.getElementById('board').style.display='flex'; document.getElementById('calendarArea').style.display='none' }
+      else{ document.getElementById('board').style.display='none'; document.getElementById('calendarArea').style.display='block' }
     }
 
-    function showDashboard() {
-      document.getElementById("loginPage").classList.add("hidden");
-      document.getElementById("registerPage").classList.add("hidden");
-      document.getElementById("dashboard").classList.remove("hidden");
+    function openModal(subject){
+      modal.style.display='flex';
+      if(subject){ modalTitle.textContent='Editar materia'; mName.value=subject.name; mCode.value=subject.code; mCredits.value=subject.credits; mCycle.value=subject.cycle; mGrade.value=subject.grade||0; modal.dataset.editId = subject.id; }
+      else{ modalTitle.textContent='Nueva materia'; mName.value=''; mCode.value=''; mCredits.value=3; mCycle.value=1; mGrade.value=0; delete modal.dataset.editId }
+      populatePrereqsSelect();
+    }
+    function closeModal(){ modal.style.display='none'; }
+
+    function populatePrereqsSelect(){ mPrereqs.innerHTML=''; state.subjects.forEach(s=>{ const o=document.createElement('option'); o.value=s.id; o.text=s.code?'['+s.code+'] '+s.name:s.name; mPrereqs.appendChild(o) }) }
+
+    function saveModal(){
+      const name=mName.value.trim(); if(!name){alert('Nombre requerido');return}
+      const code=mCode.value.trim(); const credits=parseFloat(mCredits.value)||0; const cycle=parseInt(mCycle.value)||1; const grade=parseFloat(mGrade.value)||0;
+      const prereqs = Array.from(mPrereqs.selectedOptions).map(o=>o.value);
+      if(modal.dataset.editId){ const id=modal.dataset.editId; const idx=state.subjects.findIndex(x=>x.id===id); if(idx>-1){ state.subjects[idx]={...state.subjects[idx], name,code,credits,cycle,grade,prereqs} } }
+      else{ state.subjects.push({ id: 's_'+Date.now()+'_'+Math.random().toString(36).slice(2,7), name, code, credits, cycle, grade, prereqs, passed: grade>=passThreshold, week:null }) }
+      closeModal(); save(); renderBoard();
     }
 
-    // -------- LOGIN --------
-    async function login() {
-      const email = document.getElementById("loginEmail").value;
-      const password = document.getElementById("loginPassword").value;
+    function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); updateSummary(); }
 
-      try {
-        await firebase.signInWithEmailAndPassword(auth, email, password);
-        showDashboard();
-      } catch (e) {
-        alert("Error al iniciar sesión");
+    function resetAll(){ if(!confirm('Eliminar todo el progreso?')) return; state={ years:parseInt(yearsSelect.value), subjects:[], selectedSubjectId:null, weekAssignments:{} }; save(); renderBoard(); }
+
+    function renderBoard(){
+      // crear columnas
+      board.innerHTML='';
+      for(let c=1;c<=state.years;c++){
+        const col=document.createElement('div'); col.className='column';
+        const title=document.createElement('div'); title.className='col-title'; title.innerHTML=`<strong>Ciclo ${c}</strong><span class="muted">&nbsp;</span>`;
+        col.appendChild(title);
+        const container=document.createElement('div'); container.className='col-body';
+        // materias de este ciclo
+        const subs = state.subjects.filter(s=>s.cycle===c).sort((a,b)=>a.name.localeCompare(b.name));
+        subs.forEach(s=>{ container.appendChild(renderSubjectCard(s)) });
+        col.appendChild(container);
+        board.appendChild(col);
       }
+      // columnas vacías para ciclos sin materias
+      // actualizar controls
+      countSubjects.textContent = state.subjects.length;
+      save();
     }
 
-    // -------- REGISTRO --------
-    async function registerUser() {
-      const email = document.getElementById("regEmail").value;
-      const password = document.getElementById("regPassword").value;
-
-      try {
-        await firebase.createUserWithEmailAndPassword(auth, email, password);
-        showDashboard();
-      } catch (e) {
-        alert("Error al registrarse");
-      }
-    }
-
-    // -------- MALLA CURRICULAR --------
-    function addMateria() {
-      const contenedor = document.getElementById("listaMaterias");
-
-      const card = document.createElement("div");
-      card.className = "bg-white shadow p-4 rounded-xl";
-
-      card.innerHTML = `
-        <input class="border p-2 rounded w-full mb-2" placeholder="Materia">
-        <input class="border p-2 rounded w-full mb-2" placeholder="Semestre">
-        <input class="border p-2 rounded w-full" placeholder="Nota">
+    function renderSubjectCard(s){
+      const div=document.createElement('div'); div.className='subject';
+      const locked = isLocked(s);
+      if(locked) div.classList.add('locked');
+      div.innerHTML = `
+        <div class="tooltip">${locked? tooltipForMissing(s): ''}</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" ${s.passed||s.grade>=passThreshold? 'checked':''} title="Marcar aprobada" />
+          <div style="flex:1">
+            <div class="name">${escapeHtml(s.name)} <span style="font-weight:400;color:var(--muted);font-size:12px">${s.code? '['+escapeHtml(s.code)+']':''}</span></div>
+            <div class="meta"><div class="muted">Cred ${s.credits||0}</div><div class="muted">Nota: <input style="width:60px;border-radius:6px;padding:4px;border:1px solid #eee" type="number" min="0" max="100" value="${s.grade||0}" data-subid="${s.id}" /></div></div>
+          </div>
+          <div class="actions">
+            <button data-action="edit" data-id="${s.id}">✏️</button>
+            <button data-action="del" data-id="${s.id}">🗑️</button>
+          </div>
+        </div>
       `;
 
-      contenedor.appendChild(card);
+      // handlers
+      const checkbox = div.querySelector('input[type=checkbox]');
+      checkbox.addEventListener('change', (e)=>{
+        if(locked && e.target.checked){ alert('No puedes aprobar: faltan prerrequisitos'); e.target.checked=false; return }
+        s.passed = e.target.checked;
+        if(s.passed && s.grade < passThreshold){ s.grade = passThreshold; } // asignar nota mínima
+        save(); renderBoard();
+      });
+
+      // grade input
+      const gradeInput = div.querySelector('input[type=number][data-subid]');
+      gradeInput.addEventListener('change',(ev)=>{ const val=parseFloat(ev.target.value)||0; s.grade=val; s.passed = val>=passThreshold; save(); renderBoard(); });
+
+      // actions
+      div.querySelector('[data-action=edit]').addEventListener('click',()=>{ openModal(s) });
+      div.querySelector('[data-action=del]').addEventListener('click',()=>{ if(confirm('Eliminar materia?')){ state.subjects = state.subjects.filter(x=>x.id!==s.id); save(); renderBoard() } });
+
+      // click to select (for week assignment)
+      div.addEventListener('click',(ev)=>{ if(ev.target.tagName.toLowerCase()==='input') return; state.selectedSubjectId=s.id; document.querySelectorAll('.subject').forEach(el=>el.style.outline=''); div.style.outline='3px solid rgba(160,160,200,0.15)'; save(); });
+
+      return div;
     }
+
+    function isLocked(s){ if(!s.prereqs || s.prereqs.length===0) return false; // no prereqs
+      // if any prereq not passed
+      for(const pid of s.prereqs){ const p = state.subjects.find(x=>x.id===pid); if(!p || !p.passed) return true }
+      return false;
+    }
+
+    function tooltipForMissing(s){ if(!s.prereqs || s.prereqs.length===0) return ''; const missing = s.prereqs.map(pid=>{ const p = state.subjects.find(x=>x.id===pid); return p? (p.name + (p.passed? ' (aprobado)':' (falta)')) : ('ID:'+pid) }).filter(x=>x.includes('(falta)')); if(missing.length===0) return 'Todos los prerrequisitos están aprobados'; return 'Faltan: '+missing.join(', ') }
+
+    function updateSummary(){ const passed = state.subjects.filter(s=>s.passed).length; countPassed.textContent = passed; const avg = calcGlobalAverage(); globalAverage.textContent = isNaN(avg)? '-' : avg.toFixed(2); }
+
+    function calcGlobalAverage(){ if(state.subjects.length===0) return NaN; let sum=0, w=0; state.subjects.forEach(s=>{ const weight = s.credits||1; sum += (parseFloat(s.grade)||0) * weight; w += weight }); return w? sum/w : NaN }
+
+    function exportCSV(){ if(state.subjects.length===0){ alert('No hay materias para exportar'); return }
+      const header=['Nombre','Código','Créditos','Ciclo','Nota','Aprobada','Prerrequisitos','Semana'];
+      const rows = state.subjects.map(s=>[s.name,s.code||'',s.credits||0,s.cycle||'',s.grade||0,s.passed?'SI':'NO', s.prereqs? s.prereqs.map(pid=>{ const p=state.subjects.find(x=>x.id===pid); return p? (p.code||p.name):pid }).join(';') : '', s.week||'']);
+      const csv = [header.join(','), ...rows.map(r=>r.map(cell=>`"${(''+cell).replace(/"/g,'""')}"`).join(','))].join('\n');
+      const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download = 'TuMalla_export.csv'; a.click(); URL.revokeObjectURL(url);
+    }
+
+    function resetBoard(){ state.subjects=[]; save(); renderBoard(); }
+
+    function assignSelectedToWeek(){ const id = state.selectedSubjectId; if(!id){ alert('Selecciona una materia primero (clic en bloque).'); return }
+      const week = parseInt(weekNumber.value)||1; const sub = state.subjects.find(s=>s.id===id); if(!sub) return; sub.week = week; state.weekAssignments[week] = state.weekAssignments[week] || []; if(!state.weekAssignments[week].includes(id)) state.weekAssignments[week].push(id); save(); renderWeekGrid(); renderBoard(); }
+
+    function renderWeekGrid(){ weekGrid.innerHTML=''; for(let d=1;d<=7;d++){ const day = document.createElement('div'); day.className='week-day'; day.innerHTML='<strong>Dia '+d+'</strong><div style="font-size:12px;color:var(--muted)">Arrastra o asigna materias aquí</div>'; // simple list of assigned for demo
+        // list subjects assigned to week = d (for demo, we map weekNumber to day index)
+        const list = document.createElement('div'); list.style.marginTop='8px';
+        const items = state.subjects.filter(s=>s.week && (s.week % 7) === (d % 7));
+        items.forEach(s=>{ const el = document.createElement('div'); el.className='subject'; el.style.padding='6px;margin-bottom:6px'; el.innerHTML = `<div style="font-weight:600">${s.name}</div><div class="muted" style="font-size:12px">Ciclo ${s.cycle} · Nota ${s.grade||0}</div>`; list.appendChild(el) });
+        day.appendChild(list);
+        weekGrid.appendChild(day);
+      }
+    }
+
+    // small helpers
+    function escapeHtml(s){ return (s||'').replace(/[&<>\"]/g, function(a){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[a] }) }
+
+    // iniciar
+    init();
   </script>
 </body>
 </html>
