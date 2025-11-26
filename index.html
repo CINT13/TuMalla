@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>TuMalla – Registro Universitario</title>
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-firestore.js"></script>
+</head>
+
+<body class="bg-gray-100">
+
+  <!-- ===================== LOGIN ===================== -->
+  <div id="loginPage" class="h-screen flex items-center justify-center">
+    <div class="bg-white w-96 p-8 rounded-2xl shadow-xl">
+      <h1 class="text-3xl font-bold text-center text-blue-700">TuMalla</h1>
+      <p class="text-center text-sm text-gray-600 mb-6">
+        Organiza tus semestres, materias y notas
+      </p>
+
+      <input id="loginEmail" type="email" placeholder="Correo"
+        class="border p-3 rounded-xl w-full mb-3" />
+
+      <input id="loginPassword" type="password" placeholder="Contraseña"
+        class="border p-3 rounded-xl w-full mb-3" />
+
+      <button onclick="login()" class="bg-blue-600 text-white p-3 w-full rounded-xl">
+        Iniciar sesión
+      </button>
+
+      <p class="text-sm text-center mt-4">
+        ¿No tienes cuenta? <a class="text-blue-700 cursor-pointer font-semibold" onclick="showRegister()">Registrarse</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- ===================== REGISTRO ===================== -->
+  <div id="registerPage" class="hidden h-screen flex items-center justify-center">
+    <div class="bg-white w-96 p-8 rounded-2xl shadow-xl">
+      <h1 class="text-3xl font-bold text-center text-purple-700">Crear Cuenta</h1>
+
+      <input id="regEmail" type="email" placeholder="Correo"
+        class="border p-3 rounded-xl w-full mb-3" />
+
+      <input id="regPassword" type="password" placeholder="Contraseña"
+        class="border p-3 rounded-xl w-full mb-3" />
+
+      <button onclick="registerUser()" class="bg-purple-600 text-white p-3 w-full rounded-xl">
+        Registrarse
+      </button>
+
+      <p class="text-sm text-center mt-4">
+        ¿Ya tienes cuenta? <a onclick="showLogin()" class="text-purple-700 cursor-pointer font-semibold">Iniciar sesión</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- ===================== DASHBOARD ===================== -->
+  <div id="dashboard" class="hidden p-6">
+    <h1 class="text-3xl font-bold text-blue-700 mb-4">Tu Malla Curricular</h1>
+
+    <button onclick="addMateria()" class="bg-blue-600 text-white px-4 py-2 rounded-xl mb-4">
+      + Agregar materia
+    </button>
+
+    <div id="listaMaterias" class="grid grid-cols-1 gap-4"></div>
+  </div>
+
+  <!-- ===================== FIREBASE + LÓGICA ===================== -->
+  <script>
+    // CONFIGURA AQUÍ TU FIREBASE -----------------------------
+    const firebaseConfig = {
+      apiKey: "TU_API_KEY",
+      authDomain: "TU_AUTH_DOMAIN",
+      projectId: "TU_PROJECT_ID",
+      storageBucket: "TU_BUCKET",
+      messagingSenderId: "TU_SENDER",
+      appId: "TU_APP_ID"
+    };
+    //----------------------------------------------------------
+
+    const app = firebase.initializeApp(firebaseConfig);
+    const auth = firebase.getAuth();
+    const db = firebase.getFirestore();
+
+    // -------- CAMBIO DE PÁGINAS --------
+    function showLogin() {
+      document.getElementById("loginPage").classList.remove("hidden");
+      document.getElementById("registerPage").classList.add("hidden");
+      document.getElementById("dashboard").classList.add("hidden");
+    }
+
+    function showRegister() {
+      document.getElementById("loginPage").classList.add("hidden");
+      document.getElementById("registerPage").classList.remove("hidden");
+      document.getElementById("dashboard").classList.add("hidden");
+    }
+
+    function showDashboard() {
+      document.getElementById("loginPage").classList.add("hidden");
+      document.getElementById("registerPage").classList.add("hidden");
+      document.getElementById("dashboard").classList.remove("hidden");
+    }
+
+    // -------- LOGIN --------
+    async function login() {
+      const email = document.getElementById("loginEmail").value;
+      const password = document.getElementById("loginPassword").value;
+
+      try {
+        await firebase.signInWithEmailAndPassword(auth, email, password);
+        showDashboard();
+      } catch (e) {
+        alert("Error al iniciar sesión");
+      }
+    }
+
+    // -------- REGISTRO --------
+    async function registerUser() {
+      const email = document.getElementById("regEmail").value;
+      const password = document.getElementById("regPassword").value;
+
+      try {
+        await firebase.createUserWithEmailAndPassword(auth, email, password);
+        showDashboard();
+      } catch (e) {
+        alert("Error al registrarse");
+      }
+    }
+
+    // -------- MALLA CURRICULAR --------
+    function addMateria() {
+      const contenedor = document.getElementById("listaMaterias");
+
+      const card = document.createElement("div");
+      card.className = "bg-white shadow p-4 rounded-xl";
+
+      card.innerHTML = `
+        <input class="border p-2 rounded w-full mb-2" placeholder="Materia">
+        <input class="border p-2 rounded w-full mb-2" placeholder="Semestre">
+        <input class="border p-2 rounded w-full" placeholder="Nota">
+      `;
+
+      contenedor.appendChild(card);
+    }
+  </script>
+</body>
+</html>
